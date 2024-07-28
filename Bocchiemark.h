@@ -64,6 +64,7 @@ namespace bocchie
         friend class mark_test; // lol, i think i`ll implement it hahaha
     private:
         std::string runnable_name;
+        uint64_t last_time_nanosec;
         uint64_t min_time_nanosec;
         uint64_t max_time_nanosec;
         uint64_t total_time_nanosec;
@@ -71,6 +72,7 @@ namespace bocchie
     public:
         explicit mark(std::string runnable_name) :
                 runnable_name(std::move(runnable_name)),
+                last_time_nanosec(0x00000000),
                 min_time_nanosec(UINT64_MAX),
                 max_time_nanosec(0x00000000),
                 total_time_nanosec(0x00000000),
@@ -87,6 +89,9 @@ namespace bocchie
         [[nodiscard]] std::string to_json() const;
 
         [[nodiscard]] std::string get_runnable_name() const noexcept;
+
+        template<bocchie::accuracy>
+        [[nodiscard]] auto get_last_time() const noexcept;
 
         template<bocchie::accuracy>
         [[nodiscard]] auto get_min_time() const noexcept;
@@ -113,10 +118,10 @@ namespace bocchie
                       << "\" threw exception: " << e.what() << std::endl;
         }
         auto end = std::chrono::high_resolution_clock::now();
-        uint64_t time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-        if (time < this->min_time_nanosec) this->min_time_nanosec = time;
-        if (time > this->max_time_nanosec) this->max_time_nanosec = time;
-        this->total_time_nanosec += time;
+        this->last_time_nanosec = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();\
+    if (this->last_time_nanosec < this->min_time_nanosec) this->min_time_nanosec = this->last_time_nanosec;
+        if (this->last_time_nanosec > this->max_time_nanosec) this->max_time_nanosec = this->last_time_nanosec;
+        this->total_time_nanosec += this->last_time_nanosec;
         this->total_runs++;
     }
 
@@ -125,12 +130,17 @@ namespace bocchie
         auto start = std::chrono::high_resolution_clock::now();
         auto result = func(args...); // FIXME: mb call in try-catch
         auto end = std::chrono::high_resolution_clock::now();
-        uint64_t time = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();\
-    if (time < this->min_time_nanosec) this->min_time_nanosec = time;
-        if (time > this->max_time_nanosec) this->max_time_nanosec = time;
-        this->total_time_nanosec += time;
+        this->last_time_nanosec = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();\
+    if (this->last_time_nanosec < this->min_time_nanosec) this->min_time_nanosec = this->last_time_nanosec;
+        if (this->last_time_nanosec > this->max_time_nanosec) this->max_time_nanosec = this->last_time_nanosec;
+        this->total_time_nanosec += this->last_time_nanosec;
         this->total_runs++;
         return static_cast<decltype(result)>(result);
+    }
+
+    template<bocchie::accuracy accuracy>
+    auto mark::get_last_time() const noexcept {
+        return SillyTime<accuracy>::cast(this->last_time_nanosec);
     }
 
     template<bocchie::accuracy accuracy>
