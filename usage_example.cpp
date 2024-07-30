@@ -16,23 +16,21 @@ auto silly_void_lambda = []() { sleep return 0; }; // FIXME: this is not working
 
 int main() {
 
-    bocchie::mark sum_runner("sum");
-    std::cout << "[" << sum_runner.get_runnable_name() << "]"
-    << "sum result: " << sum_runner.run(silly_sum, 1, 2)
-    << "; avg time for " << sum_runner.get_total_runs() << " runs: "
-    << sum_runner.get_avg_time<bocchie::accuracy::milliseconds>() << "ms" << std::endl;
 
-    bocchie::mark hello_world_runner("hello_world");
-    std::cout << "[" << sum_runner.get_runnable_name() << "]"
-    << "hello world result: " << hello_world_runner.run(silly_hello_world)
-    << "; avg time for " << hello_world_runner.get_total_runs() << " runs: "
-    << hello_world_runner.get_avg_time<bocchie::accuracy::milliseconds>() << "ms" << std::endl;
+    std::cout << "[sum]"
+    << "sum result: " << bocchie::manager::get("sum").run(silly_sum, 1, 2)
+    << "; avg time for " << bocchie::manager::get("sum").get_total_runs() << " runs: "
+    << bocchie::manager::get("sum").get_avg_time<bocchie::accuracy::milliseconds>() << "ms" << std::endl;
 
-    bocchie::mark procedure_runner("procedure");
-    procedure_runner.run(silly_procedure);
-    std::cout << "[" << sum_runner.get_runnable_name() << "]"
-    << "avg time for " << procedure_runner.get_total_runs() << " runs: "
-    << procedure_runner.get_avg_time<bocchie::accuracy::milliseconds>() << "ms" << std::endl;
+    std::cout << "[hello_world]"
+    << "hello world result: " << bocchie::manager::get("hello_world").run(silly_hello_world)
+    << "; avg time for " << bocchie::manager::get("hello_world").get_total_runs() << " runs: "
+    << bocchie::manager::get("hello_world").get_avg_time<bocchie::accuracy::milliseconds>() << "ms" << std::endl;
+
+    bocchie::manager::get("procedure").run(silly_procedure);
+    std::cout << "[procedure]"
+    << "avg time for " << bocchie::manager::get("procedure").get_total_runs() << " runs: "
+    << bocchie::manager::get("procedure").get_avg_time<bocchie::accuracy::milliseconds>() << "ms" << std::endl;
 
     bocchie::mark lambda_runner("lambda");
     lambda_runner.run(silly_lambda);

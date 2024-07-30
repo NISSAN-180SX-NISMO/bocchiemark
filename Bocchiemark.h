@@ -5,9 +5,15 @@
 #include <sstream>
 #include <chrono>
 #include <functional>
+#include <map>
 
 namespace bocchie
 {
+    class mark;
+    namespace instances
+    {
+        std::map</*runnable_name*/ std::string, mark> map;
+    }
 
     enum class accuracy {
         seconds,
@@ -61,7 +67,7 @@ namespace bocchie
 
     class mark {
     public:
-        friend class mark_test; // lol, i think i`ll implement it hahaha
+        friend class mark_test; // lol, I think I`ll implement it hahaha
     private:
         std::string runnable_name;
         uint64_t last_time_nanosec;
@@ -79,113 +85,111 @@ namespace bocchie
                 total_runs(0x00000000)
         {}
 
+        explicit mark():
+                last_time_nanosec(0x00000000),
+                min_time_nanosec(UINT64_MAX),
+                max_time_nanosec(0x00000000),
+                total_time_nanosec(0x00000000),
+                total_runs(0x00000000)
+        {}
+
         template<class... Args>
-        void run(void (*func)(Args...), Args... args);
+        void run(void (*func)(Args...), Args... args)
+        {
+            auto start = std::chrono::high_resolution_clock::now();
+            try {
+                func(args...);
+            } catch (std::exception& e) {
+                    std::cout << "Running \"" << this->get_runnable_name()
+                              << "\" threw exception: " << e.what() << std::endl;
+            }
+            auto end = std::chrono::high_resolution_clock::now();
+            this->last_time_nanosec = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();\
+if (this->last_time_nanosec < this->min_time_nanosec) this->min_time_nanosec = this->last_time_nanosec;
+            if (this->last_time_nanosec > this->max_time_nanosec) this->max_time_nanosec = this->last_time_nanosec;
+            this->total_time_nanosec += this->last_time_nanosec;
+            this->total_runs++;
+        }
 
         template<class Func, class... Args>
-        auto run(Func func, Args... args);
+        auto run(Func func, Args... args)
+        {
+            auto start = std::chrono::high_resolution_clock::now();
+            auto result = func(args...); // FIXME: mb call in try-catch
+            auto end = std::chrono::high_resolution_clock::now();
+            this->last_time_nanosec = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();\
+if (this->last_time_nanosec < this->min_time_nanosec) this->min_time_nanosec = this->last_time_nanosec;
+            if (this->last_time_nanosec > this->max_time_nanosec) this->max_time_nanosec = this->last_time_nanosec;
+            this->total_time_nanosec += this->last_time_nanosec;
+            this->total_runs++;
+            return static_cast<decltype(result)>(result);
+        }
 
         template<bocchie::accuracy accuracy>
-        [[nodiscard]] std::string to_json() const;
+        [[nodiscard]] std::string to_json() const
+        {
+            auto accuracy_string = SillyTime<accuracy>::to_string();
+            std::stringstream ss;
+            ss << "{\n"
+               << "\t\"runnable_name\": \"" << this->runnable_name << "\",\n"
+               << "\t\"min_time_" << accuracy_string << "\": " << this->get_min_time<accuracy>() << ",\n"
+               << "\t\"max_time_" << accuracy_string << "\": " << this->get_max_time<accuracy>() << ",\n"
+               << "\t\"total_time_" << accuracy_string << "\": " << this->get_total_time<accuracy>() << ",\n"
+               << "\t\"total_runs_" << accuracy_string << "\": " << this->get_total_runs() << ",\n"
+               << "\t\"avg_time_" << accuracy_string << "\": " << this->get_avg_time<accuracy>() << "\n"
+               << "}";
+            return ss.str();
+        }
 
-        [[nodiscard]] std::string get_runnable_name() const noexcept;
+        [[nodiscard]] std::string get_runnable_name() const noexcept
+        {
+            return this->runnable_name;
+        }
 
-        template<bocchie::accuracy>
-        [[nodiscard]] auto get_last_time() const noexcept;
+        template<bocchie::accuracy accuracy>
+        [[nodiscard]] auto get_last_time() const noexcept
+        {
+            return SillyTime<accuracy>::cast(this->last_time_nanosec);
+        }
 
-        template<bocchie::accuracy>
-        [[nodiscard]] auto get_min_time() const noexcept;
+        template<bocchie::accuracy accuracy>
+        [[nodiscard]] auto get_min_time() const noexcept
+        {
+            return SillyTime<accuracy>::cast(this->min_time_nanosec);
+        }
 
-        template<bocchie::accuracy>
-        [[nodiscard]] auto get_max_time() const noexcept;
+        template<bocchie::accuracy accuracy>
+        [[nodiscard]] auto get_max_time() const noexcept
+        {
+            return SillyTime<accuracy>::cast(max_time_nanosec);
+        }
 
-        template<bocchie::accuracy>
-        [[nodiscard]] auto get_total_time() const noexcept;
+        template<bocchie::accuracy accuracy>
+        [[nodiscard]] auto get_total_time() const noexcept
+        {
+            return SillyTime<accuracy>::cast(total_time_nanosec);
+        }
 
-        [[nodiscard]] uint64_t get_total_runs() const noexcept;
+        [[nodiscard]] uint64_t get_total_runs() const noexcept
+        {
+            return this->total_runs;
+        }
 
-        template<bocchie::accuracy>
-        [[nodiscard]] auto get_avg_time() const noexcept;
+        template<bocchie::accuracy accuracy>
+        [[nodiscard]] auto get_avg_time() const noexcept
+        {
+            return total_runs == 0 ? this->get_total_time<accuracy>() :
+                   SillyTime<accuracy>::cast(total_time_nanosec / total_runs);
+        }
     };
 
-    template<class... Args>
-    void bocchie::mark::run(void (*func)(Args...), Args... args) {
-        auto start = std::chrono::high_resolution_clock::now();
-        try {
-            func(args...);
-        } catch (std::exception& e) {
-            std::cerr << "Running \"" << this->get_runnable_name()
-                      << "\" threw exception: " << e.what() << std::endl;
+    class manager
+    {
+    public:
+        static mark& get(const std::string& name)
+        {
+            return instances::map[name];
         }
-        auto end = std::chrono::high_resolution_clock::now();
-        this->last_time_nanosec = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();\
-    if (this->last_time_nanosec < this->min_time_nanosec) this->min_time_nanosec = this->last_time_nanosec;
-        if (this->last_time_nanosec > this->max_time_nanosec) this->max_time_nanosec = this->last_time_nanosec;
-        this->total_time_nanosec += this->last_time_nanosec;
-        this->total_runs++;
-    }
-
-    template<class Func, class... Args>
-    auto bocchie::mark::run(Func func, Args... args) {
-        auto start = std::chrono::high_resolution_clock::now();
-        auto result = func(args...); // FIXME: mb call in try-catch
-        auto end = std::chrono::high_resolution_clock::now();
-        this->last_time_nanosec = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();\
-    if (this->last_time_nanosec < this->min_time_nanosec) this->min_time_nanosec = this->last_time_nanosec;
-        if (this->last_time_nanosec > this->max_time_nanosec) this->max_time_nanosec = this->last_time_nanosec;
-        this->total_time_nanosec += this->last_time_nanosec;
-        this->total_runs++;
-        return static_cast<decltype(result)>(result);
-    }
-
-    template<bocchie::accuracy accuracy>
-    auto mark::get_last_time() const noexcept {
-        return SillyTime<accuracy>::cast(this->last_time_nanosec);
-    }
-
-    template<bocchie::accuracy accuracy>
-    inline auto mark::get_min_time() const noexcept {
-        return SillyTime<accuracy>::cast(this->min_time_nanosec);
-    }
-
-    template<bocchie::accuracy accuracy>
-    inline auto bocchie::mark::get_max_time() const noexcept {
-        return SillyTime<accuracy>::cast(max_time_nanosec);
-    }
-
-    template<bocchie::accuracy accuracy>
-    inline auto bocchie::mark::get_total_time() const noexcept {
-        return SillyTime<accuracy>::cast(total_time_nanosec);
-    }
-
-    template<bocchie::accuracy accuracy>
-    inline auto bocchie::mark::get_avg_time() const noexcept {
-        return total_runs == 0 ? this->get_total_time<accuracy>() :
-                SillyTime<accuracy>::cast(total_time_nanosec / total_runs);
-    }
-
-    template<bocchie::accuracy accuracy>
-    std::string bocchie::mark::to_json() const {
-        auto accuracy_string = SillyTime<accuracy>::to_string();
-        std::stringstream ss;
-        ss << "{\n"
-           << "\t\"runnable_name\": \"" << this->runnable_name << "\",\n"
-           << "\t\"min_time_" << accuracy_string << "\": " << this->get_min_time<accuracy>() << ",\n"
-           << "\t\"max_time_" << accuracy_string << "\": " << this->get_max_time<accuracy>() << ",\n"
-           << "\t\"total_time_" << accuracy_string << "\": " << this->get_total_time<accuracy>() << ",\n"
-           << "\t\"total_runs_" << accuracy_string << "\": " << this->get_total_runs() << ",\n"
-           << "\t\"avg_time_" << accuracy_string << "\": " << this->get_avg_time<accuracy>() << "\n"
-           << "}";
-        return ss.str();
-    }
-
-    std::string mark::get_runnable_name() const noexcept {
-        return this->runnable_name;
-    }
-
-    uint64_t mark::get_total_runs() const noexcept {
-        return this->total_runs;
-    }
-
+    };
 }
 #endif //BOCCHIEMARK_BOCCHIEMARK_H
